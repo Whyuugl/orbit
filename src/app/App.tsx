@@ -13,6 +13,7 @@ import { ProjectsPage } from "../features/projects/pages/ProjectsPage";
 import { ProjectDetailPage } from "../features/projects/pages/ProjectDetailPage";
 import { DashboardOverviewPage } from "../features/planner/pages/DashboardOverviewPage";
 import { PlannerPage } from "../features/planner/pages/PlannerPage";
+import { DataLabPage } from "../features/data-lab/pages/DataLabPage";
 
 function AppContent() {
   const [activeNav, setActiveNav] = useState("Overview");
@@ -20,9 +21,11 @@ function AppContent() {
   const location = useLocation();
 
   const currentNav = location.pathname.startsWith("/projects")
-    ? "Projects"
-    : location.pathname.startsWith("/planner")
-      ? "Planner"
+  ? "Projects"
+  : location.pathname.startsWith("/planner")
+    ? "Planner"
+    : location.pathname.startsWith("/data-lab")
+      ? "Data Lab"
       : location.pathname === "/"
         ? "Overview"
         : activeNav;
@@ -43,6 +46,12 @@ function AppContent() {
     if (name === "Planner") {
       setActiveNav("Planner");
       navigate("/planner");
+      return;
+    }
+
+    if (name === "Data Lab") {
+      setActiveNav("Data Lab");
+      navigate("/data-lab");
       return;
     }
 
@@ -76,6 +85,8 @@ function AppContent() {
         />
 
         <Route path="/planner" element={<PlannerPage />} />
+
+        <Route path="/data-lab" element={<DataLabPage />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

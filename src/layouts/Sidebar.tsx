@@ -241,8 +241,7 @@ export function Sidebar({ activeNav, onNavigate }: SidebarProps) {
           {activeNav === "Overview" && !activeRepository && (
             <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
           )}
-        </button>
-
+                </button>
                 <button
           type="button"
           onClick={() => onNavigate("Planner")}
@@ -259,6 +258,24 @@ export function Sidebar({ activeNav, onNavigate }: SidebarProps) {
             <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
           )}
         </button>
+
+        <button
+          type="button"
+          onClick={() => onNavigate("Data Lab")}
+          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] transition ${
+            activeNav === "Data Lab"
+              ? "border border-accent/10 bg-accent/[0.08] text-accent"
+              : "text-slate-500 hover:bg-white/[0.04] hover:text-slate-200"
+          }`}
+        >
+          <Database size={15} />
+          <span className="flex-1">Data Lab</span>
+
+          {activeNav === "Data Lab" && (
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          )}
+        </button>
+
 
         <div className="mb-2 mt-7 flex items-center justify-between px-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
