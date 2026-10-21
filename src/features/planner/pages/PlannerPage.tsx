@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CalendarDays,
+  Columns3,
   Plus,
 } from "lucide-react";
 
@@ -10,6 +11,7 @@ import { useGitHubRepositories } from "../../projects/hooks/useGitHubRepositorie
 import { usePlannerTasks } from "../hooks/usePlannerTasks";
 import { PlannerTaskForm } from "../components/PlannerTaskForm";
 import { PlannerTaskList } from "../components/PlannerTaskList";
+import { PlannerBoard } from "../components/PlannerBoard";
 
 function toDateKey(date: Date): string {
   return [
@@ -52,6 +54,9 @@ export function PlannerPage() {
   );
   const [selectedDate, setSelectedDate] = useState(today);
   const [showTaskForm, setShowTaskForm] = useState(false);
+  const [viewMode, setViewMode] = useState<"calendar" | "board">(
+  "calendar",
+);
 
   const calendarDays = useMemo(
     () => getCalendarDays(visibleMonth),
@@ -135,16 +140,50 @@ export function PlannerPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowTaskForm(true)}
-          className="inline-flex items-center justify-center gap-2 self-start rounded-lg bg-sky-400 px-4 py-2.5 text-xs font-semibold text-slate-950 transition hover:bg-sky-300 sm:self-auto"
-        >
-          <Plus size={15} /> New task
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <div className="flex rounded-lg border border-white/[0.08] bg-[#141519] p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode("calendar")}
+              aria-pressed={viewMode === "calendar"}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${
+                viewMode === "calendar"
+                  ? "bg-white/[0.08] text-white"
+                  : "text-slate-500 hover:text-slate-200"
+              }`}
+            >
+              <CalendarDays size={14} />
+              Calendar
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode("board")}
+              aria-pressed={viewMode === "board"}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${
+                viewMode === "board"
+                  ? "bg-white/[0.08] text-white"
+                  : "text-slate-500 hover:text-slate-200"
+              }`}
+            >
+              <Columns3 size={14} />
+              Board
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowTaskForm(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-400 px-4 py-2.5 text-xs font-semibold text-slate-950 transition hover:bg-sky-300"
+          >
+            <Plus size={15} />
+            New task
+          </button>
+        </div>
       </header>
 
-      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.75fr)]">
+      {viewMode === "calendar" ? (
+        <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.75fr)]">
         <section className="rounded-xl border border-white/[0.07] bg-[#141519] p-4 sm:p-5">
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
@@ -285,7 +324,14 @@ export function PlannerPage() {
             <Plus size={14} /> Add task to this date
           </button>
         </section>
-      </div>
+        </div>
+        ) : (
+          <PlannerBoard
+            tasks={tasks}
+            onStatusChange={setTaskStatus}
+            onDelete={deleteTask}
+          />
+        )}
 
       {showTaskForm && (
         <PlannerTaskForm
