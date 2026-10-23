@@ -1,15 +1,17 @@
-
-from fastapi import APIRouter, File, UploadFile
-
-from app.repositories.dataset_repository import list_datasets
-from app.schemas.dataset import DatasetResponse
-from app.services.dataset_service import upload_dataset
 from fastapi import APIRouter, File, Query, UploadFile
 
+from app.repositories.dataset_repository import (
+    delete_dataset_by_id,
+    get_dataset_by_id,
+    list_datasets,
+)
+from app.schemas.dataset import DatasetResponse
 from app.services.analysis_service import (
     get_dataset_preview,
     get_dataset_profile,
 )
+from app.services.dataset_service import delete_dataset, upload_dataset
+
 
 router = APIRouter(prefix="/datasets", tags=["Datasets"])
 
@@ -28,6 +30,11 @@ async def create_dataset_endpoint(
 @router.get("", response_model=list[DatasetResponse])
 def list_datasets_endpoint() -> list[dict]:
     return list_datasets()
+
+
+@router.delete("/{dataset_id}", status_code=204)
+def delete_dataset_endpoint(dataset_id: str) -> None:
+    delete_dataset(dataset_id)
 
 
 @router.get("/{dataset_id}/preview")

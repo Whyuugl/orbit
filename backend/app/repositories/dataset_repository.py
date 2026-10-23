@@ -1,6 +1,6 @@
 
+import json
 import sqlite3
-from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import DATABASE_PATH
@@ -69,8 +69,6 @@ def create_dataset(metadata: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_datasets() -> list[dict[str, Any]]:
-    import json
-
     initialize_database()
 
     with _connect() as connection:
@@ -103,9 +101,7 @@ def list_datasets() -> list[dict[str, Any]]:
     ]
 
 
-def get_dataset_by_id(dataset_id: str) -> dict | None:
-    import json
-
+def get_dataset_by_id(dataset_id: str) -> dict[str, Any] | None:
     initialize_database()
 
     with _connect() as connection:
@@ -139,3 +135,16 @@ def get_dataset_by_id(dataset_id: str) -> dict | None:
         "columns": json.loads(row["columns_json"]),
         "created_at": row["created_at"],
     }
+
+
+def delete_dataset_by_id(dataset_id: str) -> None:
+    """Delete a dataset record from the DB.
+
+    Used by integrity cleanup to purge stale metadata.
+    """
+    initialize_database()
+    with _connect() as connection:
+        connection.execute(
+            "DELETE FROM datasets WHERE id = ?",
+            (dataset_id,),
+        )

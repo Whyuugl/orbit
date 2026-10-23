@@ -5,7 +5,8 @@ import type {
   DatasetProfile,
 } from "../types/dataset";
 
-const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
 async function request<T>(
   path: string,
@@ -37,6 +38,7 @@ async function request<T>(
     throw new Error(message);
   }
 
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -75,4 +77,10 @@ export function getDatasetProfile(
   return request<DatasetProfile>(
     `/datasets/${encodeURIComponent(datasetId)}/profile`,
   );
+}
+
+export function deleteDataset(datasetId: string): Promise<void> {
+  return request<void>(`/datasets/${encodeURIComponent(datasetId)}`, {
+    method: "DELETE",
+  });
 }

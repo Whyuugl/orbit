@@ -10,10 +10,14 @@ from app.core.config import DATASETS_DIR, MAX_COLUMNS, MAX_ROWS
 from app.repositories.dataset_repository import get_dataset_by_id
 
 
-def _load_dataset(dataset_id: str) -> tuple[dict, pd.DataFrame]:
+PREVIEW_CHUNK_SIZE = 10_000
+
+
+def _get_dataset_source(dataset_id: str) -> tuple[dict, Path]:
+    """Validate a dataset ID and resolve its stored CSV path."""
     try:
         normalized_id = str(UUID(dataset_id))
-    except ValueError as exc:
+    except (ValueError, TypeError, AttributeError) as exc:
         raise HTTPException(
             status_code=422,
             detail="Invalid dataset ID.",
@@ -27,14 +31,25 @@ def _load_dataset(dataset_id: str) -> tuple[dict, pd.DataFrame]:
             detail="Dataset not found.",
         )
 
-    # Nama file berasal dari metadata internal, bukan dari request pengguna.
     expected_filename = f"{normalized_id}.csv"
 
-    if metadata["stored_filename"] != expected_filename:
+    if metadata.get("stored_filename") != expected_filename:
         raise HTTPException(
             status_code=500,
             detail="Dataset storage metadata is invalid.",
         )
+
+    try:
+        columns = metadata.get("columns")
+        if not isinstance(columns, list) or not all(
+            isinstance(column, str) for column in columns
+        ):
+            raise ValueError("invalid columns")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Dataset metadata is invalid.",
+        ) from exc
 
     path = DATASETS_DIR / expected_filename
 
@@ -44,36 +59,84 @@ def _load_dataset(dataset_id: str) -> tuple[dict, pd.DataFrame]:
             detail="Dataset file is no longer available.",
         )
 
+    return metadata, path
+
+
+def _validate_dataset_limits(
+    row_count: int,
+    column_count: int,
+) -> None:
+    """Reject datasets that exceed configured analysis limits."""
+    if row_count > MAX_ROWS or column_count > MAX_COLUMNS:
+        raise HTTPException(
+            status_code=422,
+            detail="Dataset exceeds the configured analysis limits.",
+        )
+
+
+def _load_dataset(dataset_id: str) -> tuple[dict, pd.DataFrame]:
+    """Load a complete dataset for profiling."""
+    metadata, path = _get_dataset_source(dataset_id)
+
     try:
         dataframe = pd.read_csv(
             path,
             encoding="utf-8-sig",
             on_bad_lines="error",
         )
-    except (OSError, UnicodeDecodeError, ValueError, pd.errors.ParserError) as exc:
+    except (
+        OSError,
+        UnicodeDecodeError,
+        ValueError,
+        pd.errors.ParserError,
+        pd.errors.EmptyDataError,
+    ) as exc:
         raise HTTPException(
-            status_code=422,
-            detail="Dataset could not be parsed.",
+            status_code=410,
+            detail="Dataset file is corrupted or cannot be read.",
         ) from exc
 
-    # Pemeriksaan pertahanan tambahan sebelum analisis.
-    if len(dataframe) > MAX_ROWS or len(dataframe.columns) > MAX_COLUMNS:
+    # Verify CSV shape matches metadata (changed file detection)
+    actual_row_count = len(dataframe)
+    actual_column_count = len(dataframe.columns)
+    expected_row_count = metadata.get("row_count")
+    expected_column_count = metadata.get("column_count")
+
+    if (
+        isinstance(expected_row_count, int)
+        and actual_row_count != expected_row_count
+    ):
         raise HTTPException(
-            status_code=422,
-            detail="Dataset exceeds the configured analysis limits.",
+            status_code=410,
+            detail="Dataset file has been modified after upload.",
         )
+
+    if (
+        isinstance(expected_column_count, int)
+        and actual_column_count != expected_column_count
+    ):
+        raise HTTPException(
+            status_code=410,
+            detail="Dataset file has been modified after upload.",
+        )
+
+    _validate_dataset_limits(actual_row_count, actual_column_count)
 
     return metadata, dataframe
 
 
 def _json_value(value):
-    if value is None or pd.isna(value):
+    """Convert pandas and NumPy values into JSON-compatible values."""
+    if value is None:
+        return None
+
+    if isinstance(value, (float, np.floating)) and not np.isfinite(value):
         return None
 
     if isinstance(value, np.generic):
-        return value.item()
+        value = value.item()
 
-    if isinstance(value, (pd.Timestamp,)):
+    if isinstance(value, pd.Timestamp):
         return value.isoformat()
 
     return value
@@ -84,10 +147,12 @@ def get_dataset_preview(
     offset: int = 0,
     limit: int = 25,
 ) -> dict:
-    metadata, dataframe = _load_dataset(dataset_id)
-
+    """Read only the CSV chunks required for the requested page."""
     if offset < 0:
-        raise HTTPException(status_code=422, detail="Offset cannot be negative.")
+        raise HTTPException(
+            status_code=422,
+            detail="Offset cannot be negative.",
+        )
 
     if limit < 1 or limit > 100:
         raise HTTPException(
@@ -95,20 +160,85 @@ def get_dataset_preview(
             detail="Limit must be between 1 and 100.",
         )
 
-    page = dataframe.iloc[offset:offset + limit]
+    metadata, path = _get_dataset_source(dataset_id)
 
-    rows = [
-        {
-            str(column): _json_value(value)
-            for column, value in row.items()
+    try:
+        total_rows = int(metadata["row_count"])
+        total_columns = int(metadata["column_count"])
+        columns = metadata["columns"]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Dataset metadata is invalid.",
+        ) from exc
+
+    _validate_dataset_limits(total_rows, total_columns)
+
+    if offset >= total_rows:
+        return {
+            "dataset_id": metadata["id"],
+            "columns": columns,
+            "total_rows": total_rows,
+            "offset": offset,
+            "limit": limit,
+            "rows": [],
         }
-        for row in page.to_dict(orient="records")
-    ]
+
+    rows = []
+    rows_to_skip = offset
+
+    try:
+        chunks = pd.read_csv(
+            path,
+            encoding="utf-8-sig",
+            on_bad_lines="error",
+            chunksize=PREVIEW_CHUNK_SIZE,
+        )
+
+        for chunk in chunks:
+            _validate_dataset_limits(
+                row_count=total_rows,
+                column_count=len(chunk.columns),
+            )
+
+            if rows_to_skip >= len(chunk):
+                rows_to_skip -= len(chunk)
+                continue
+
+            start = rows_to_skip
+            remaining = limit - len(rows)
+            page = chunk.iloc[start:start + remaining]
+            rows_to_skip = 0
+
+            rows.extend(
+                {
+                    str(column): _json_value(value)
+                    for column, value in row.items()
+                }
+                for row in page.to_dict(orient="records")
+            )
+
+            if len(rows) >= limit:
+                break
+
+    except HTTPException:
+        raise
+    except (
+        OSError,
+        UnicodeDecodeError,
+        ValueError,
+        pd.errors.ParserError,
+        pd.errors.EmptyDataError,
+    ) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Dataset could not be parsed.",
+        ) from exc
 
     return {
         "dataset_id": metadata["id"],
-        "columns": metadata["columns"],
-        "total_rows": len(dataframe),
+        "columns": columns,
+        "total_rows": total_rows,
         "offset": offset,
         "limit": limit,
         "rows": rows,
@@ -116,24 +246,28 @@ def get_dataset_preview(
 
 
 def get_dataset_profile(dataset_id: str) -> dict:
+    """Generate descriptive statistics for a dataset."""
     metadata, dataframe = _load_dataset(dataset_id)
 
     column_profiles = []
 
     for column in dataframe.columns:
         series = dataframe[column]
+
         profile = {
             "name": str(column),
             "dtype": str(series.dtype),
             "missing_count": int(series.isna().sum()),
             "missing_percent": round(
-                float(series.isna().mean() * 100), 2
+                float(series.isna().mean() * 100),
+                2,
             ),
             "unique_count": int(series.nunique(dropna=True)),
         }
 
         if pd.api.types.is_numeric_dtype(series):
             numeric = pd.to_numeric(series, errors="coerce")
+
             profile["statistics"] = {
                 "min": _json_value(numeric.min()),
                 "max": _json_value(numeric.max()),

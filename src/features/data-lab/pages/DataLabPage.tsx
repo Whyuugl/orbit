@@ -12,6 +12,7 @@ import {
   getDatasetPreview,
   getDatasetProfile,
   listDatasets,
+  deleteDataset,
 } from "../api/datasets";
 import { DatasetList } from "../components/DatasetList";
 import { DatasetUploader } from "../components/DatasetUploader";
@@ -123,6 +124,32 @@ export function DataLabPage() {
     void loadDataset(dataset);
   }
 
+  async function handleDelete(dataset: Dataset) {
+    if (!window.confirm(`Hapus dataset "${dataset.original_filename}"?`)) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      await deleteDataset(dataset.id);
+      setDatasets((current) =>
+        current.filter((item) => item.id !== dataset.id),
+      );
+
+      if (selected?.id === dataset.id) {
+        setSelected(null);
+        setPreview(null);
+        setProfile(null);
+        setOffset(0);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Gagal menghapus dataset.",
+      );
+    }
+  }
+
   function formatNumber(value: number | null | undefined): string {
     if (value == null || !Number.isFinite(value)) return "—";
 
@@ -197,6 +224,7 @@ export function DataLabPage() {
           datasets={datasets}
           selectedId={selected?.id ?? null}
           onSelect={(dataset) => void loadDataset(dataset)}
+          onDelete={(dataset) => void handleDelete(dataset)}
           isLoading={isLoading}
         />
       </section>

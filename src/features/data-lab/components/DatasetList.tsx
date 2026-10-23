@@ -1,24 +1,20 @@
 
-import { Database, FileSpreadsheet } from "lucide-react";
+import { Database, FileSpreadsheet, Trash2 } from "lucide-react";
 import type { Dataset } from "../types/dataset";
 
 interface DatasetListProps {
   datasets: Dataset[];
   selectedId: string | null;
   onSelect: (dataset: Dataset) => void;
+  onDelete: (dataset: Dataset) => void;
   isLoading: boolean;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function DatasetList({
   datasets,
   selectedId,
   onSelect,
+  onDelete,
   isLoading,
 }: DatasetListProps) {
   if (isLoading) {
@@ -87,9 +83,14 @@ export function DatasetList({
               </span>
             </span>
 
-            <span className="shrink-0 text-[10px] tabular-nums text-subtle">
-              {formatFileSize(dataset.file_size_bytes)}
-            </span>
+            <button
+              type="button"
+              className="ml-2 shrink-0 text-muted hover:text-rose-400 transition"
+              onClick={e => { e.stopPropagation(); onDelete(dataset); }}
+              title="Delete dataset"
+            >
+              <Trash2 size={16} />
+            </button>
           </button>
         );
       })}
